@@ -1,0 +1,16 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  creationTimestamp: null
+  name: chaos-test-graph
+  namespace: datahub
+spec:
+  template:
+    metadata:
+      creationTimestamp: null
+    spec:
+      containers:
+      - image: amydockerid/chaos
+        name: chaos-test-graph
+      restartPolicy: Never
+  backoffLimit: 3

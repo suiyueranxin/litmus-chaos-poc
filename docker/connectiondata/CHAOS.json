@@ -1,0 +1,5 @@
+{
+    "name": "CHAOS",
+    "baseurl": "https://vsystem.ingress.dh-2xvdwr3o.dh-testing.shoot.canary.k8s-hana.ondemand.com",
+    "tenant": "default"
+}

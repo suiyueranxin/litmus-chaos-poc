@@ -1,0 +1,140 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Workflow
+metadata:
+  name: graph-pod-delete
+  namespace: litmus
+  labels:
+    subject: litmus-graph-pod-delete
+spec:
+  entrypoint: argowf-chaos
+  imagePullSecrets:
+  - name: dockersecret
+  serviceAccountName: argo-chaos
+  securityContext:
+    runAsUser: 1000
+    runAsNonRoot: true
+  arguments:
+    parameters:
+      - name: adminModeNamespace
+        value: litmus
+      - name: appNamespace
+        value: datahub
+      - name: graphIdLabelSelector
+        value: graph=eca4425c7e3c48a6995f25a552e17d90
+      - name: graphSourceLabelSelector
+        value: vflow.datahub.sap.com/graph-source=com-sap-demo-datagenerator
+      - name: modelerDeploymentSelector
+        value: vsystem.datahub.sap.com/template=pipeline-modeler
+      - name: vflowRuntimeDeploymentSelector
+        value: vsystem.datahub.sap.com/template=vflow-runtime-store
+  templates:
+    - name: argowf-chaos
+      steps:
+        - - name: install-application
+            template: install-application
+        - - name: install-chaos-experiments
+            template: install-chaos-experiments
+        - - name: pod-delete
+            template: pod-delete
+        - - name: revert-chaos
+            template: revert-chaos
+    - name: install-application
+      container:
+        image: hanaservice-dev.common.repositories.cloud.sap/tmp/chaos-poc-dic:2.0.0
+        command: [sh, -c]
+        args:
+          - "sh /project/entrypoint.sh test_chaos.py test_start_"
+    - name: install-chaos-experiments
+      container:
+        image: litmuschaos/k8s:latest
+        command: [sh, -c]
+        args:
+          - "kubectl apply -f https://hub.litmuschaos.io/api/chaos/2.14.0?file=charts/generic/experiments.yaml -n {{workflow.parameters.adminModeNamespace}} ; sleep 30"
+    - name: pod-delete
+      inputs:
+        artifacts:
+          - name: pod-delete
+            path: /tmp/chaosengine.yaml
+            raw:
+              data: |
+                apiVersion: litmuschaos.io/v1alpha1
+                kind: ChaosEngine
+                metadata:
+                  name: graph-pod-delete-chaos-engine
+                  generateName: graph-pod-delete-chaos-engine
+                  namespace: {{workflow.parameters.adminModeNamespace}}
+                  labels:
+                    subject: litmus-graph-pod-delete
+                spec:
+                  appinfo:
+                    appns: "{{workflow.parameters.appNamespace}}"
+                    applabel: "{{workflow.parameters.vflowRuntimeDeploymentSelector}}"
+                    appkind: deployment
+                  engineState: active
+                  chaosServiceAccount: litmus-admin
+                  jobCleanUpPolicy: retain
+                  components:
+                    runner:
+                      imagePullPolicy: Always
+                      # imagePullSecrets:
+                      # - name: dockersecret
+                  experiments:
+                    - name: pod-delete
+                      spec:
+                        probe:
+                          - name: check-graph-still-running-by-k8s
+                            type: "k8sProbe"
+                            k8sProbe/inputs:
+                              group: ""
+                              version: "v1"
+                              resource: "pods"
+                              namespace: "{{workflow.parameters.appNamespace}}"
+                              fieldSelector: "status.phase=Running"
+                              labelSelector: "{{workflow.parameters.graphSourceLabelSelector}}"
+                              operation: "present"
+                            mode: "Continuous"
+                            runProperties:
+                              probeTimeout: 1
+                              interval: 1
+                              retry: 5
+                              probePollingInterval: 1
+                          - name: "check-benchmark"
+                            type: "cmdProbe"
+                            cmdProbe/inputs:
+                              command: "sh /project/entrypoint.sh test_chaos.py test_validation_"
+                              comparator:
+                                type: "string" # supports: string, int, float
+                                criteria: "equal" #supports >=,<=,>,<,==,!= for int and contains,equal,notEqual,matches,notMatches for string values
+                                value: "PASS"
+                              source:
+                                image: "hanaservice-dev.common.repositories.cloud.sap/tmp/chaos-poc-dic:1.0.0"
+                                imagePullSecrets:
+                                - name: dockersecret
+                                hostNetwork: false
+                            mode: "Edge"
+                            runProperties:
+                              probeTimeout: 2
+                              interval: 1
+                              retry: 2
+                              initialDelaySeconds: 10
+                        components:
+                          # experimentImagePullSecrets:
+                          #   - name: dockersecret
+                          # imagePullSecrets:
+                          #   - name: dockersecret
+                          env:
+                            - name: TOTAL_CHAOS_DURATION
+                              value: "30"
+                            - name: CHAOS_INTERVAL
+                              value: "10"
+                            - name: FORCE
+                              value: "false"
+      container:
+        image: litmuschaos/litmus-checker:latest
+        args: ["-file=/tmp/chaosengine.yaml", "-saveName=/tmp/engine-name"]
+    - name: revert-chaos
+      container:
+        image: litmuschaos/k8s:latest
+        command: [sh, -c]
+        args:
+          - "kubectl delete chaosengine graph-pod-delete-chaos-engine -n {{workflow.parameters.adminModeNamespace}}"

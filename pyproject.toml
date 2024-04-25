@@ -1,0 +1,29 @@
+[tool.poetry]
+name = "di-qa-e2e-cet-tests"
+version = "0.2.0"
+description = "DI central e2e testing scenarios"
+authors = ["Tammy Yang <tammy.yang@sap.com>"]
+
+[tool.poetry.dependencies]
+python = "^3.10.9"
+di-qa-e2e = "0.2.3a29"
+di-qa-e2e-validation = "0.2.3a4"
+retry = "0.9.2"
+unittest-xml-reporting = "3.2.0"
+jinja2 = "3.1.2"
+pyyaml = "6.0.1"
+
+
+[[tool.poetry.source]]
+# This is the SAP Artifactory that's use to _look up_ dependencies. 
+# This is _not_ used for publishing this project as package!
+name = "artifactory"
+url = "https://int.repositories.cloud.sap/artifactory/api/pypi/di-qa-python-public/simple"
+default = false
+secondary = true
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+
